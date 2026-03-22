@@ -288,6 +288,15 @@ function errorEmbed(title, desc) {
 const httpApp = express()
 httpApp.use(express.json())
 
+// Allow requests from Electron app
+httpApp.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Accept')
+  res.header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+  if(req.method === 'OPTIONS') return res.sendStatus(200)
+  next()
+})
+
 httpApp.post('/validate', (req, res) => {
   const { key, hwid } = req.body
   if(!key || !hwid) return res.json({ valid: false, reason: 'Missing key or hwid' })
