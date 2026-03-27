@@ -182,16 +182,34 @@ client.on('interactionCreate', async interaction => {
     }
 
     const expired = keyData.expires && new Date(keyData.expires) < new Date()
+    const pc = keyData.pcInfo
+
+    // Build PC info string
+    let pcString = 'Not yet activated'
+    if(pc) {
+      pcString = [
+        pc.hostname  ? `💻 **PC Name:** ${pc.hostname}`   : null,
+        pc.os        ? `🖥 **OS:** ${pc.os}`               : null,
+        pc.cpu       ? `⚙️ **CPU:** ${pc.cpu}`             : null,
+        pc.cores     ? `🔢 **Cores:** ${pc.cores}`         : null,
+        pc.ram       ? `🧠 **RAM:** ${pc.ram}`             : null,
+        pc.arch      ? `📐 **Arch:** ${pc.arch}`           : null,
+      ].filter(Boolean).join('\n')
+    }
+
     const embed = new EmbedBuilder()
       .setColor(expired ? 0xff6b6b : keyData.hwid ? 0x2dd4a0 : 0xe8621a)
       .setTitle('🔍 Key Lookup')
       .addFields(
-        { name: 'Key', value: `\`${key}\``, inline: false },
-        { name: 'Status', value: expired ? '❌ Expired' : keyData.hwid ? '✅ Active (HWID locked)' : '🔓 Unlocked (not yet used)', inline: true },
-        { name: 'Expires', value: keyData.expires || 'Never', inline: true },
-        { name: 'HWID', value: keyData.hwid ? `\`${keyData.hwid.substring(0,16)}...\`` : 'Not locked yet', inline: false },
-        { name: 'Created', value: keyData.createdAt ? new Date(keyData.createdAt).toLocaleDateString() : 'Unknown', inline: true },
-        { name: 'Created By', value: keyData.createdBy || 'Unknown', inline: true },
+        { name: 'Key',        value: `\`${key}\``,                                                                         inline: false },
+        { name: 'Status',     value: expired ? '❌ Expired' : keyData.hwid ? '✅ Active (HWID locked)' : '🔓 Not yet used', inline: true  },
+        { name: 'Expires',    value: keyData.expires || 'Never',                                                            inline: true  },
+        { name: 'Created By', value: keyData.createdBy || 'Unknown',                                                        inline: true  },
+        { name: 'Assigned To',value: keyData.assignedTo || 'Not assigned',                                                  inline: true  },
+        { name: 'Activated',  value: keyData.activatedAt ? new Date(keyData.activatedAt).toLocaleString() : 'Not yet',      inline: true  },
+        { name: 'Last Seen',  value: keyData.lastSeen    ? new Date(keyData.lastSeen).toLocaleString()    : 'Never',         inline: true  },
+        { name: '🖥 PC Information', value: pcString,                                                                       inline: false },
+        { name: 'HWID',       value: keyData.hwid ? `\`${keyData.hwid.substring(0,16)}...\`` : 'Not locked yet',            inline: false },
       )
       .setTimestamp()
 
@@ -313,7 +331,7 @@ httpApp.use((req, res, next) => {
 })
 
 httpApp.post('/validate', (req, res) => {
-  const { key, hwid } = req.body
+  const { key, hwid, pcInfo } = req.body
   if(!key || !hwid) return res.json({ valid: false, reason: 'Missing key or hwid' })
 
   const k = key.toUpperCase()
@@ -323,12 +341,20 @@ httpApp.post('/validate', (req, res) => {
     return res.json({ valid: false, reason: 'Key expired' })
 
   if(keyData.hwid === null) {
+    // First activation — lock HWID and save PC info
     KEYS[k].hwid = hwid
+    KEYS[k].activatedAt = new Date().toISOString()
+    KEYS[k].pcInfo = pcInfo || null
     saveKeys(KEYS)
     return res.json({ valid: true, message: 'Activated' })
   }
 
   if(keyData.hwid !== hwid) return res.json({ valid: false, reason: 'Key locked to different machine' })
+
+  // Update PC info and last seen on every launch
+  KEYS[k].pcInfo = pcInfo || KEYS[k].pcInfo
+  KEYS[k].lastSeen = new Date().toISOString()
+  saveKeys(KEYS)
   return res.json({ valid: true, message: 'Valid' })
 })
 
